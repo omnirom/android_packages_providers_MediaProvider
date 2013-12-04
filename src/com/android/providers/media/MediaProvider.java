@@ -63,11 +63,15 @@ import android.os.Environment;
 import android.os.FileUtils;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.os.IBinder;
 import android.os.Message;
 import android.os.ParcelFileDescriptor;
 import android.os.Process;
 import android.os.RemoteException;
+import android.os.ServiceManager;
 import android.os.SystemClock;
+import android.os.SystemProperties;
+import android.os.storage.IMountService;
 import android.os.storage.StorageManager;
 import android.os.storage.StorageVolume;
 import android.preference.PreferenceManager;
@@ -5226,8 +5230,24 @@ public class MediaProvider extends ContentProvider {
             } else if (EXTERNAL_VOLUME.equals(volume)) {
                 if (Environment.isExternalStorageRemovable()) {
                     String path = mExternalStoragePaths[0];
-                    int volumeID = FileUtils.getFatVolumeId(path);
-                    if (LOCAL_LOGV) Log.v(TAG, path + " volume ID: " + volumeID);
+
+                    // Fetch from MountService since we can no longer access the ID directly
+                    // due to fuse. Limiting to 8 chars in case of UUID to match FAT
+                    IMountService mountService = IMountService.Stub.asInterface(ServiceManager
+                            .getService("mount"));
+                    String volumeUUID = null;
+
+                    try {
+                        volumeUUID = mountService.getVolumeUuid(path);
+                    } catch (RemoteException e) {
+                        // volumeUUID is set to null
+                    }
+
+                    // Using parseLong before casting to int to allow 2-complement notation
+                    int volumeID = volumeUUID == null ?
+                            -1 : (int) Long.parseLong(volumeUUID.substring(0, 8), 16);
+
+                    Log.e(TAG, path + " volume ID: " + volumeID);
 
                     // Must check for failure!
                     // If the volume is not (yet) mounted, this will create a new
