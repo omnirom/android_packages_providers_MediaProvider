@@ -54,6 +54,7 @@ public class MediaService extends IntentService {
     }
 
     private PowerManager.WakeLock mWakeLock;
+    private static final String RINGTONE_SEPARATOR = ",";
 
     @Override
     public void onCreate() {
@@ -178,42 +179,70 @@ public class MediaService extends IntentService {
                 TYPE_NOTIFICATION,
                 TYPE_ALARM,
         }) {
-            // Skip if we've already defined it at least once, so we don't
-            // overwrite the user changing to null
-            final String setting = getDefaultRingtoneSetting(type);
-            if (Settings.System.getInt(context.getContentResolver(), setting, 0) != 0) {
-                continue;
-            }
-
-            // Try finding the scanned ringtone
-            final String filename = getDefaultRingtoneFilename(type);
-            final Uri baseUri = MediaStore.Audio.Media.INTERNAL_CONTENT_URI;
-            try (Cursor cursor = context.getContentResolver().query(baseUri,
-                    new String[] { MediaColumns._ID },
-                    MediaColumns.DISPLAY_NAME + "=?",
-                    new String[] { filename }, null)) {
-                if (cursor.moveToFirst()) {
-                    final Uri ringtoneUri = context.getContentResolver().canonicalizeOrElse(
-                            ContentUris.withAppendedId(baseUri, cursor.getLong(0)));
-                    RingtoneManager.setActualDefaultRingtoneUri(context, type, ringtoneUri);
-                    Settings.System.putInt(context.getContentResolver(), setting, 1);
+            if (type == TYPE_RINGTONE) {
+                if (SystemProperties.get("ro.config.ringtone").indexOf(RINGTONE_SEPARATOR) != -1) {
+                    setDefaultRingtone(context, type, 0);
+                    setDefaultRingtone(context, type, 1);
+                    continue;
                 }
+            }
+            setDefaultRingtone(context, type, 0);
+        }
+    }
+
+    private static void setDefaultRingtone(Context context, int type, int slot) {
+        final String setting = getDefaultRingtoneSetting(type, slot);
+        if (Settings.System.getInt(context.getContentResolver(), setting, 0) != 0) {
+            return;
+        }
+
+        // Try finding the scanned ringtone
+        final String filename = getDefaultRingtoneFilename(type, slot);
+        final Uri baseUri = MediaStore.Audio.Media.INTERNAL_CONTENT_URI;
+        try (Cursor cursor = context.getContentResolver().query(baseUri,
+                new String[] { MediaColumns._ID },
+                MediaColumns.DISPLAY_NAME + "=?",
+                new String[] { filename }, null)) {
+            if (cursor.moveToFirst()) {
+                final Uri ringtoneUri = context.getContentResolver().canonicalizeOrElse(
+                        ContentUris.withAppendedId(baseUri, cursor.getLong(0)));
+                RingtoneManager.setActualDefaultRingtoneUriBySlot(context, type, ringtoneUri, slot);
+                Settings.System.putInt(context.getContentResolver(), setting, 1);
             }
         }
     }
 
-    private static String getDefaultRingtoneSetting(int type) {
+    private static String getDefaultRingtoneSetting(int type, int slot) {
         switch (type) {
-            case TYPE_RINGTONE: return "ringtone_set";
+            case TYPE_RINGTONE: {
+                if (slot == 0) {
+                    return "ringtone_set";
+                }
+                if (slot == 1) {
+                    return "ringtone2_set";
+                }
+            }
             case TYPE_NOTIFICATION: return "notification_sound_set";
             case TYPE_ALARM: return "alarm_alert_set";
             default: throw new IllegalArgumentException();
         }
     }
 
-    private static String getDefaultRingtoneFilename(int type) {
+    private static String getDefaultRingtoneFilename(int type, int slot) {
         switch (type) {
-            case TYPE_RINGTONE: return SystemProperties.get("ro.config.ringtone");
+            case TYPE_RINGTONE: {
+                final String prop = SystemProperties.get("ro.config.ringtone");
+                if (prop.indexOf(RINGTONE_SEPARATOR) != -1) {
+                    String defaultRingtoneArray[] = prop.split(RINGTONE_SEPARATOR);
+                    if (slot == 0) {
+                        return defaultRingtoneArray[0];
+                    }
+                    if (slot == 1 && defaultRingtoneArray.length > 1) {
+                        return defaultRingtoneArray[1];
+                    }
+                }
+                return prop;
+            }
             case TYPE_NOTIFICATION: return SystemProperties.get("ro.config.notification_sound");
             case TYPE_ALARM: return SystemProperties.get("ro.config.alarm_alert");
             default: throw new IllegalArgumentException();
