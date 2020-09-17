@@ -3927,7 +3927,7 @@ public class MediaProvider extends ContentProvider {
                         Context.MODE_PRIVATE);
                 final SharedPreferences.Editor editor = scanSettings.edit();
                 editor.putString(android.media.MediaScanner.LAST_INTERNAL_SCAN_FINGERPRINT,
-                        Build.OMNI_FINGERPRINT);
+                        Build.FINGERPRINT);
                 editor.apply();
             }
             mMediaScannerVolume = null;
@@ -6602,7 +6602,7 @@ public class MediaProvider extends ContentProvider {
                 }
             } else {
                 s.append(": pid=" + android.os.Process.myPid());
-                s.append(", fingerprint=" + Build.OMNI_FINGERPRINT);
+                s.append(", fingerprint=" + Build.FINGERPRINT);
             }
         }
         return s.toString();
